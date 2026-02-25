@@ -1,183 +1,176 @@
-# Pentera Core API - Agnostic Documentation
+# Pentera Core API - Comprehensive Documentation
 
-This documentation provides an agnostic view of the Pentera Core API, derived from the `PenteraPS_API` project. It serves as a reference for building applications that integrate with Pentera.
+This documentation provides a complete reference for the Pentera Core API, derived from the official Swagger specification. It serves as a guide for building applications and integrations with the Pentera platform.
 
 ## Table of Contents
-1. [Authentication](#authentication)
-2. [Testing History & Tasks](#testing-history--tasks)
-3. [Vulnerabilities & Achievements](#vulnerabilities--achievements)
-4. [Hosts & Nodes](#hosts--nodes)
-5. [Scenarios & Templates](#scenarios--templates)
-6. [User Management](#user-management)
-7. [Audit & Logs](#audit--logs)
-8. [Attack Bridges](#attack-bridges)
+1. [Authentication](#1-authentication)
+2. [Testing History & Task Runs](#2-testing-history--task-runs)
+3. [Testing Operations](#3-testing-operations)
+4. [Testing Results](#4-testing-results)
+5. [Nodes & Status](#5-nodes--status)
+6. [Network Configuration](#6-network-configuration)
+7. [Definitions & Objects](#7-definitions--objects)
 
 ---
 
-## Authentication
+## 1. Authentication
 
-Pentera uses a two-step authentication process: Login and Token-based Authorization.
+Pentera uses a two-step authentication process: Login to obtain a session token, followed by Token-based Authorization for all subsequent requests.
 
-### 1. Login
-Exchange credentials for a temporary token and an updated TGT (Ticket Granting Ticket).
+### Login
+Exchange client credentials for a temporary session token and an updated TGT (Ticket Granting Ticket).
 
-- **Endpoint:** `POST /auth/login`
-- **Body:**
+- **Endpoint:** `POST /pentera/api/v1/auth/login`
+- **Request Body:**
   ```json
   {
     "client_id": "YOUR_CLIENT_ID",
     "tgt": "YOUR_CURRENT_TGT"
   }
   ```
-- **Response:**
+- **Success Response (200 OK):**
   ```json
   {
-    "meta": { "status": "success" },
+    "meta": { "status": "success", "token": "...", "user": { ... } },
     "token": "SESSION_TOKEN",
     "tgt": "NEW_TGT"
   }
   ```
-  *Note: The TGT is rotated upon each login and should be persisted for the next session.*
+  *Note: The TGT is rotated upon each login and must be persisted for the next session. Tokens typically expire after 30 minutes.*
 
-### 2. Authorization Header
-Subsequent requests must include the session token in a Basic Auth header.
+### Authorization Header
+All subsequent API requests must include the session token in a Basic Auth header.
 
 - **Header:** `Authorization: Basic [Base64(token:)]`
-  *Note: The colon after the token is required for Basic Auth format.*
+  *Note: The colon after the token is mandatory before Base64 encoding (e.g., `echo -n "token:" | base64`).*
 
 ---
 
-## Testing History & Tasks
+## 2. Testing History & Task Runs
 
 ### Get Testing History
-Retrieve a list of past and current task runs within a specified time range.
+Retrieve metadata for test runs executed within a specified timeframe.
 
 - **Endpoint:** `GET /pentera/api/v1/testing_history`
 - **Required Query Parameters:**
   | Parameter | Type | Description |
   |-----------|------|-------------|
-  | `start_timestamp` | int | Start of time range in Unix epoch milliseconds (integer, no decimals) |
-  | `end_timestamp` | int | End of time range in Unix epoch milliseconds (integer, no decimals) |
+  | `start_timestamp` | float | Start of range (Unix epoch milliseconds, integer format recommended) |
+  | `end_timestamp` | float | End of range (Unix epoch milliseconds, integer format recommended) |
 
-- **Example Request:**
-  ```
-  GET https://192.168.1.100:8181/pentera/api/v1/testing_history?start_timestamp=1640017381279&end_timestamp=1740017381279
-  ```
-
-- **Alternative (POST with pagination):** `POST /api/v1/taskRun`
-- **Body (Optional Pagination):**
-  ```json
-  {
-    "offset": 0,
-    "items_per_page": 10000
-  }
-  ```
+- **Example:** `GET /testing_history?start_timestamp=1640017381279&end_timestamp=1740017381279`
 
 ### Delete Task Runs (Bulk)
-Delete multiple task runs by their IDs.
+Delete multiple test runs by their IDs.
 
-- **Endpoint:** `POST /api/v1/taskRun/deleteBulk`
-- **Body:**
+- **Endpoint:** `POST /pentera/api/v1/taskRun/deleteBulk`
+- **Request Body:**
   ```json
   {
     "taskRunsIds": ["id1", "id2", "id3"]
   }
   ```
 
-### Get Task Run Statistics
-- **Endpoint:** `GET /api/v1/taskRun/{taskId}/stats`
-
-### Stop a Task Run
-- **Endpoint:** `POST /task_run/{taskId}/stop_run`
-
-### Export Task History
-- **Endpoint:** `POST /api/v1/taskRun/export`
-- **Body:**
-  ```json
-  {
-    "task_run_ids": ["id1", "id2"],
-    "password": "encryption_password"
-  }
-  ```
+### Recalculate Stats
+Recalculate statistics for a task run if inconsistencies are found.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/calculate_stats`
 
 ---
 
-## Vulnerabilities & Achievements
-
-### Get Achievements
-List achievements (milestones) for a specific task run.
-- **Endpoint:** `GET /task_run/{taskId}/achievements`
-
-### Get Vulnerabilities
-List vulnerabilities found during a task run.
-- **Endpoint:** `GET /task_run/{taskId}/vulnerabilities`
-- **Alternative (API v1):** `GET /api/v1/taskRun/{taskId}/vulnerability`
-
----
-
-## Hosts & Nodes
-
-### Get Hosts
-List hosts involved in a specific task run.
-- **Endpoint:** `GET /task_run/{taskId}/hosts`
-
-### Get Nodes (RAN/Cracking)
-List Pentera nodes (Remote Access Nodes or Cracking Nodes).
-- **Endpoint:** `GET /api/v1/nodes`
-
-### Create a Node
-- **Endpoint:** `POST /api/v1/nodes/createNode`
-
----
-
-## Scenarios & Templates
+## 3. Testing Operations
 
 ### List Scenarios/Templates
-- **Endpoint:** `GET /api/v1/templates`
-- **Alternative:** `GET /testing_scenarios`
+Fetch metadata for all configured Testing Scenario templates.
+- **Endpoint:** `GET /pentera/api/v1/testing_scenarios`
 
 ### Start a Scenario
-- **Endpoint:** `POST /task/{scenarioId}/start_run`
+Initiate a new test run based on a template.
+- **Endpoint:** `POST /pentera/api/v1/task/{template_id}/start_run`
+
+### Stop a Test Run
+Stop an active test run and initiate the cleanup phase.
+- **Endpoint:** `POST /pentera/api/v1/task_run/{task_run_id}/stop_run`
 
 ### Clone a Scenario
-- **Endpoint:** `POST /testing_scenario/{scenarioId}/clone?name={name}&description={description}`
-
----
-
-## User Management
-
-### List Users
-- **Endpoint:** `GET /api/v1/userManagement`
-
-### Create/Update User
-- **Endpoint:** `POST /api/v1/userManagement`
-- **Body:**
+Create a new template by cloning an existing one with new IP ranges.
+- **Endpoint:** `POST /pentera/api/v1/testing_scenario/{template_id}/clone`
+- **Query Parameters:** `name`, `description`
+- **Request Body:**
   ```json
   {
-    "username": "...",
-    "password": "...",
-    "role": "ADMIN|VIEWER|...",
-    "email": "..."
+    "ip_ranges": [{"fromIp": "10.0.0.1", "toIp": "10.0.0.254"}],
+    "exclude_ip_ranges": []
   }
   ```
 
+### Silent Run Identification
+Get prefix and postfix identifiers used for reducing noise in monitoring systems.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/command_line_identification`
+
+### Approvals Management
+Manage manual approvals for actions during a test run.
+- **List Approvals:** `GET /pentera/api/v1/task_run/{task_run_id}/approvals`
+- **Approve Action:** `POST /pentera/api/v1/task_run/{task_run_id}/approve/{approval_id}`
+
 ---
 
-## Audit & Logs
+## 4. Testing Results
 
-### Get Audit Log
-- **Endpoint:** `GET /api/v1/auditLog`
+### Get Achievements
+List all milestones/achievements obtained during a specific task run.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/achievements`
 
-### Get Actions Log
-- **Endpoint:** `GET /task_run/{taskId}/actions_log`
+### Get Vulnerabilities
+List all vulnerabilities validated during a specific task run.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/vulnerabilities`
+
+### Get Action Logs
+Fetch the detailed log of all actions performed during a test.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/actions_log`
+
+### Get Hosts
+List all hosts discovered and covered by a specific test run.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/hosts`
+
+### Get Asset Details
+Fetch specific details for an asset (Host, Webdomain, etc.) within a task run.
+- **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/target_details/{target_type}/{target_id}`
 
 ---
 
-## Attack Bridges
+## 5. Nodes & Status
 
-### List Attack Bridges
-- **Endpoint:** `GET /api/v1/nodes/ANIFiles/details`
+### Get Nodes Status
+Fetch status for all deployed Pentera nodes (Remote Access, Cracking, etc.).
+- **Endpoint:** `GET /pentera/api/v1/nodesStatus`
 
-### Download Attack Bridge File
-- **Endpoint:** `GET /api/v1/nodes/ANIFile/{id}`
-- **Response:** Base64 encoded executable bytes.
+---
+
+## 6. Network Configuration
+
+### Proxy Exclusions
+Manage the list of IPs and hostnames that bypass proxy routing.
+- **Get Exclusions:** `GET /pentera/api/v1/administration/integrations/proxy/exclusions`
+- **Set Exclusions:** `POST /pentera/api/v1/administration/integrations/proxy/exclusions`
+  - **Body:** `{"ips": ["..."], "hostnames": ["..."]}`
+
+---
+
+## 7. Definitions & Objects
+
+### TaskRun Object
+| Property | Type | Description |
+|----------|------|-------------|
+| `task_run_id` | string | Unique ID for the test run |
+| `start_timestamp` | float | Start time (ms) |
+| `end_timestamp` | float | End time (ms) |
+| `status` | string | `success`, `failed`, `running`, etc. |
+| `score` | string | Overall cyber posture (A-C or %) |
+
+### IPRange Object
+```json
+{
+  "fromIp": "192.168.1.1",
+  "toIp": "192.168.1.254"
+}
+```
