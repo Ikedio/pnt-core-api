@@ -1,0 +1,30 @@
+# Pentera API Configuration
+pentera_api.conf
+*copy.conf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+
+# CSV Data (contains potentially sensitive scenario/IP info)
+scenarios.csv
+extracted_scenarios.csv
+
+# OS files
+.DS_Store
+Thumbs.db

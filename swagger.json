@@ -1,0 +1,1802 @@
+{
+    "swagger": "2.0",
+    "info": {
+      "description": "Pentera public APIs",
+      "version": "1.0.0",
+      "title": "Pentera APIs"
+    },
+    "basePath": "/pentera/api/v1/",
+    "schemes": [
+      "https"
+    ],
+    "securityDefinitions": {
+      "token": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization"
+      }
+    },
+    "security": [
+      {
+        "token": []
+      }
+    ],
+    "parameters": {
+      "GlobalToken": {
+        "name": "Authorization",
+        "description": "Token for authentication",
+        "in": "header",
+        "type": "string",
+        "required": true
+      }
+    },
+    "paths": {
+      "/auth/login": {
+        "post": {
+          "tags": ["Authentication"],
+          "summary": "Log into Pentera API and generate a token",
+          "description": "Use the API Client ID and TGT generated in Pentera's user interface (web app) to authenticate.\nThe call returns a TGT and a token. The TGT is valid for 180 days, the token is cycled with every call.\nEvery API call returns a fresh token in its response metadata, for use in the subsequent call.\nThe TGT is used whenever authentication is required.",
+          "operationId": "Login",
+          "consumes": [
+            "application/json"
+          ],
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "body",
+              "name": "Login Params",
+              "description": "Submit an API Client ID and TGT. To generate a API Client ID and initial TGT, open your Pentera web application and navigate to Administration > Integrations > API Clients.",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/TGTAuth"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Login",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "meta": {
+                    "type": "object",
+                    "properties": {
+                      "serverTime": {
+                        "type": "integer"
+                      },
+                      "agentsReady": {
+                        "type": "boolean"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "token": {
+                        "type": "string"
+                      },
+                      "user": {
+                        "type": "object",
+                        "properties": {
+                          "userName": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "tgt": {
+                    "type": "string",
+                    "description": "Long-term TGT for authentication that is valid for 180 days. To issue an initial TGT, open your Pentera web application and navigate to Administration > Integrations > API Clients.",
+                    "example": "eyJhbGciOiJIUzI1NiIsImlhdCI6MTY0MDc2NzkwMiwiZXhwIjoxNjUxMTM1OTAyLjB9.eyJ1c2VybmFtZSI6ImJjZmNiZGE4ODQyMTRhMmFiYTE0Zjk3ZjQ2NDViZWNkIiwiaXAiOiIiLCJpc19tZmFfb3RwX3ZlcmlmaWNhdGlvbl90b2tlbiI6ZmFsc2V9.lFrKN8vh6Pn0r6sOGZfKMYaMht5JkK0qcT2jnTkwUfY"
+                  },
+                  "token": {
+                    "type": "string",
+                    "description": "Short-term token for running a single Pentera API call. A fresh token is supplied in the response metadata of every endpoint, ready for use to make a subsequent call.\nThe token's lifetime is configurable from the Pentera UI under Administration > MISC. Settings > Automatically Log Out Idle Users.\nBy default, the token expires after 30 minutes.",
+                    "example": "eyJhbGciOiJIUzI1NiIsImlhdCI6MTY0MDc2NzkwMiwiZXhwIjoxNjQwNzY5NzAyfQ.eyJ1c2VybmFtZSI6ImFkbWluIiwiaXAiOiIxMjcuMC4wLjEiLCJpc19tZmFfb3RwX3ZlcmlmaWNhdGlvbl90b2tlbiI6ZmFsc2V9.OJJZzQt9UPVBEe89-TK0UCRZtdpVLEYQYAzkoO-SKRA"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Invalid Login"
+            }
+          }
+        }
+      },
+      "/testing_history": {
+        "get": {
+          "summary": "Fetch testing history for a specified time frame",
+          "description": "Fetches metadata for all test runs that were executed between the start and end dates.",
+          "tags": ["Testing Results"],
+          "parameters": [
+            {
+              "in": "query",
+              "required": true,
+              "name": "start_timestamp",
+              "description": "Earliest test run to include in the data, based on the date that the test run was initiated. (Milliseconds since Unix Epoch, integer format recommended)",
+              "type": "number",
+              "format": "double"
+            },
+            {
+              "in": "query",
+              "required": true,
+              "name": "end_timestamp",
+              "description": "Latest test run to include in the data, based on the date that the test run ended. (Milliseconds since Unix Epoch, integer format recommended)",
+              "type": "number",
+              "format": "double"
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "List of test runs run during the specified timeframe and their metadata",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task_runs":{
+                    "type":"array",
+                    "items": {
+                      "$ref": "#/definitions/TaskRun"
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized access"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/achievements": {
+        "get": {
+          "tags": ["Testing Results"],
+          "summary": "Fetch achievements for a single test run",
+          "description": "Fetches all of Pentera's achievements for a specific test run",
+          "operationId": "Task Run",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "test run ID",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "success",
+              "schema": {
+                "properties": {
+                  "achievements":{
+                    "type":"array",
+                    "items": {
+                      "$ref": "#/definitions/Achievement"
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested test run ID does not exist"
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/vulnerabilities": {
+        "get": {
+          "tags": ["Testing Results"],
+          "summary": "Fetch vulnerabilities found in a single test run",
+          "description": "Fetches all the vulnerabilities validated by a specific test run",
+          "operationId": "Vulnerabilities",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "Test run ID",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "success",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "vulnerabilities":{
+                    "type":"array",
+                    "items": {
+                      "$ref": "#/definitions/Vulnerability"
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested test run ID does not exist"
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/actions_log": {
+        "get": {
+          "tags": ["Testing Results"],
+          "summary": "Fetch action logs for a single test run",
+          "description": "Fetches all Pentera action logs for a specific test run",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "Test run ID",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "6177f07e4d174d6fc20fa17a"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "success",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actions_log":{
+                    "type":"array",
+                    "items": {
+                      "$ref": "#/definitions/ActionLog"
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested test run ID does not exist"
+            }
+          }
+        }
+      },
+      "/testing_scenarios": {
+        "get": {
+          "tags": ["Testing Operations"],
+          "summary": "Fetch all Testing Scenario templates",
+          "description": "Fetches metadata for all Testing Scenario templates.",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "success",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "testing_scenarios":{
+                    "type":"array",
+                    "items": {
+                      "$ref": "#/definitions/TestingScenario"
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges for this request"
+            }
+          }
+        }
+      },
+      "/task/{template_id}/start_run": {
+        "post": {
+          "tags": [
+            "Testing Operations"
+          ],
+          "summary": "Start a test run",
+          "description": "Initiates a test run of a Testing Scenario template.",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "description": "Testing Scenario template used to configure the task",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successfully started the test run",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startedTaskRunsStatus": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/startedTaskRunsStatus"
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Template ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges for this request"
+            },
+            "404": {
+              "description": "Requested Testing Scenario template ID does not exist"
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/stop_run": {
+        "post": {
+          "tags": [
+            "Testing Operations"
+          ],
+          "summary": "Stop a test run",
+          "description": "Stops a test run. Once stopped, the test enters the cleanup phase before it ends. Once cleanup is complete, the next test can be initiated.",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "ID of the test to be stopped.",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Test run was successfully stopped. Please allow for the test cleanup to complete before initiating the next test run.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "success"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges for this request"
+            },
+            "404": {
+              "description": "Requested test run ID is not currently running or does not exist"
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/target_details/{target_type}/{target_id}": {
+        "get": {
+          "tags": [
+            "Testing Results"
+          ],
+          "summary": "Fetch test-specific asset details",
+          "description": "Fetches details for a specific asset within the scope of a specific test run",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "Test run ID",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "in": "path",
+              "name": "target_type",
+              "description": "Target categorization, for example, host, server, router, etc. It is returned by the endpoint `/task_run/{task_run_id}/achievements`",
+              "required": true,
+              "enum": ["Host", "Webdomain", "Domain", "Webapplication"],
+              "schema": {
+               "$ref": "#/definitions/TargetTypeEnum"
+              }
+            },
+            {
+              "in": "path",
+              "name": "target_id",
+              "description": "The Target ID is specific to the test run. It is returned by the endpoint `/task_run/{task_run_id}/achievements`",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Success! Asset details for the specific test are provided below",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/ObjectId",
+                    "description": "target id"
+                  },
+                  "task_run_id": {
+                    "$ref": "#/definitions/ObjectId",
+                    "description": "Test run id"
+                  },
+                  "asset_info": {
+                    "type": "object"
+                  }
+  
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges for this request"
+            },
+            "404": {
+              "description": "Requested test run ID does not exist"
+            },
+            "405": {
+              "description": "The requested Target Type is not supported by this endpoint."
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/hosts": {
+        "get": {
+          "tags": [
+            "Testing Results"
+          ],
+          "summary": "Fetch hosts covered by a single test run",
+          "description": "Fetches all of the hosts covered by a specific test run",
+          "operationId": "Task Run",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "Test run ID",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "success",
+              "schema": {
+                "properties": {
+                  "hosts": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/Host"
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested test run ID does not exist"
+            }
+          }
+        }
+      },
+      "/testing_scenario/{template_id}/clone": {
+        "post": {
+          "tags": [
+            "Testing Operations"
+          ],
+          "summary": "Clone and edit a Testing Scenario template",
+          "description": "Create a new template on the basis of an existing template with a new name, description, and IP ranges to be covered.\nThe schedule is automatically reset. The Attack Interface and other settings are carried over from the original template and can be edited from the Pentera UI.",
+          "consumes": [
+            "application/json"
+          ],
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "description": "ID of the Testing Scenario template to be cloned",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "in": "query",
+              "required": true,
+              "name": "name",
+              "description": "Name for the new Testing Scenario template",
+              "type": "string"
+            },
+            {
+              "in": "query",
+              "required": true,
+              "name": "description",
+              "description": "Description for the new Testing Scenario template",
+              "type": "string"
+            },
+            {
+              "in": "body",
+              "required": true,
+              "name": "IP ranges",
+              "description": "Define the IP ranges to be covered by the new Testing Scenario template",
+              "schema": {
+                "type": "object",
+                "properties": {
+                "ip_ranges": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/IPRange"
+                  },
+                  "minItems": 1
+                  },
+                  "exclude_ip_ranges": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/IPRange"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "success",
+              "schema": {
+                "properties": {
+                  "template": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "description": "Unique ID of the new Testing Scenario template",
+                        "$ref": "#/definitions/ObjectId",
+                        "example": "6161ef310c2f84b773ea7a2b"
+                      },
+                      "name": {
+                        "description": "Name of the new Testing Scenario template",
+                        "type": "string",
+                        "example": "test name"
+                      },
+                      "description": {
+                        "description": "Description of the new Testing Scenario template",
+                        "type": "string",
+                        "example": "task description"
+                      },
+                      "type": {
+                        "description": "Type of Testing Scenario",
+                        "$ref": "#/definitions/templateTypeEnum"
+                      },
+                      "schedule": {
+                        "description": "Testing schedule copied from the original template. This schedule needs to be changed from the Pentera UI",
+                        "$ref": "#/definitions/schedule"
+                      },
+                      "ip_ranges": {
+                        "description": "IP ranges to be covered by the Testing Scenario template",
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/IPRange"
+                        }
+                      },
+                      "exclude_ip_ranges": {
+                        "description": "IP ranges to be excluded by the Testing Scenario template",
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/definitions/IPRange"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested Test ID does not exist"
+            },
+            "500": {
+              "description": "System error"
+            }
+          }
+        }
+      },
+      "/task_run/{task_run_id}/calculate_stats": {
+        "get": {
+          "tags": [
+            "Testing Operations"
+          ],
+          "summary": "Recalculate test run stats in case something went wrong",
+          "description": "In cases all vulnerabilities and achievements count in the overview and the report are zeros or some differance between the results exists in cases something went wrong during the run, this API can recalculate to make sure the numbers are now correct",
+          "operationId": "Task Run",
+          "produces": [
+            "application/json"
+          ],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "task_run_id",
+              "description": "test run ID",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ObjectId",
+                "example": "61a64c40e1c9b9f68a24853b"
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Test run stats was successfully recalculated. Please check the test overview to see if the number are now correct.",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "example": "success"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Test run ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested test run ID does not exist"
+            }
+          }
+        }
+      },
+      "/taskRun/deleteBulk": {
+        "post": {
+          "tags": ["Testing Operations"],
+          "summary": "Delete multiple test runs in bulk",
+          "description": "Deletes a list of test runs specified by their IDs.",
+          "operationId": "deleteBulkTaskRuns",
+          "consumes": ["application/json"],
+          "produces": ["application/json"],
+          "parameters": [
+            {
+              "in": "body",
+              "name": "body",
+              "required": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "taskRunsIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "example": "61a64c40e1c9b9f68a24853b"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "$ref": "#/parameters/GlobalToken"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Test runs deleted successfully",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "meta": {
+                    "type": "object",
+                    "properties": {
+                      "status": { "type": "string", "example": "success" }
+                    }
+                  }
+                }
+              }
+            },
+            "401": { "description": "Unauthorized access" },
+            "403": { "description": "Insufficient privileges" }
+          }
+        }
+      },
+      "/nodesStatus": {
+      "get": {
+        "summary": "Get nodes status",
+        "description": "Fetch a status for all deployed nodes, including the node’s name, connection status, IP address, and version.",
+        "operationId": "getNodesStatus",
+        "tags": [
+          "Nodes"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/parameters/GlobalToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of node statuses",
+            "schema": {
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "node_id": {
+              "description": "Unique identifier for the node",
+              "$ref": "#/definitions/ObjectId",
+              "example": "6161ef310c2f84b773ea7a2b"
+            },
+            "node_name": {
+              "description": "Name of the node",
+              "type": "string",
+              "example": "test_node"
+            },
+            "status": {
+              "description": "Current node status",
+              "type": "string",
+              "example": "online, offline"
+            },
+            "ip_address": {
+              "description": "IP address of the node",
+              "type": "string"
+            },
+            "version": {
+              "description": "Node Pentera deployed version",
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+          },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "500": {
+              "description": "System error"
+            }
+        }
+      }
+    },
+    "/task_run/{task_run_id}/command_line_identification": {
+      "get": {
+        "summary": "Get test prefix & postfix",
+        "description": "Returns the prefix and postfix that were in effect when the specified task run executed. These reflect the identifiers at execution time and may differ from the system’s current values. Prefix and/or postfix identifiers are used in Pentera’s Silent Run feature for reducing noise in monitoring systems.",
+        "operationId": "getCommandLineIdentification",
+        "tags": [
+          "Testing Operations"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "name": "task_run_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "ID of the test run"
+          },
+          {
+            "$ref": "#/parameters/GlobalToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Command line identification result",
+            "schema": {
+                "properties": {
+                  "commandLineIdentificationData": {
+                    "type": "object",
+                    "properties": {
+                      "prefix": {
+                        "description": "Prefix used in the test",
+                        "type": "string"
+                      },
+                      "postfix": {
+                        "description": "Postfix used in the test",
+                        "type": "string"
+                      },
+                      "scheduleType": {
+                         "description": "The current system scheduleType for command-line identifier rotation (e.g. \"daily\" or \"off\"). This reflects the config in effect now, not the schedule that was active during the task run.",
+                        "type": "string",
+                        "enum": [
+                          "daily",
+                          "off"
+                        ]
+                      },
+                      "lastGenerationTime": {
+                        "description": "The timestamp when the system last generated new command-line identifiers . This comes from the current config and is not tied to the specific task run.",
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+          },
+            "400": {
+              "description": "Test ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested Test ID does not exist"
+            },
+            "500": {
+              "description": "System error"
+            }
+        }
+      }
+    },
+    "/task_run/{task_run_id}/approvals": {
+      "get": {
+        "summary": "Get all approvals",
+        "description": "Fetch pending and approved approvals and when they were approved.",
+        "operationId": "getTaskRunApprovals",
+        "tags": [
+          "Testing Operations"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "name": "task_run_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "ID of the test run"
+          },
+          {
+            "$ref": "#/parameters/GlobalToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of approvals",
+            "schema": {
+    "properties": {
+      "approvals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "approval_id": {
+              "description": "ID of the approval",
+              "$ref": "#/definitions/ObjectId",
+              "example": "6161ef310c2f84b773ea7a2b"
+            },
+            "description": {
+              "description": "What the approval allows",
+              "type": "string"
+            },
+            "status": {
+              "description": "Current status",
+              "type": "string",
+              "example": "pending, approved"
+            },
+            "created_timestamp": {
+              "description": "When it was requested",
+              "format": "double",
+              "type": "number"
+            },
+            "approved_timestamp": {
+              "description": "When it was approved",
+              "format": "double",
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+          },
+            "400": {
+              "description": "Test ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested Test ID does not exist"
+            },
+            "500": {
+              "description": "System error"
+            }
+        }
+      }
+    },
+    "/task_run/{task_run_id}/approve/{approval_id}": {
+      "post": {
+        "summary": "Approve an approval",
+        "description": "Approve a specific approval. Once approved, the action will run in the currently running test.",
+        "operationId": "approveAction",
+        "tags": [
+          "Testing Operations"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "name": "task_run_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "ID of the test run"
+          },
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "ID of the approval"
+          },
+          {
+            "$ref": "#/parameters/GlobalToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval action completed",
+            "schema": {
+                "properties": {
+                  "template": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "description": "Operation success flag",
+                        "type": "boolean"
+                      },
+                      "message": {
+                        "description": "Confirmation or error message",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+          },
+            "400": {
+              "description": "Test ID is not formatted correctly"
+            },
+            "401": {
+              "description": "Unauthorized user"
+            },
+            "403": {
+              "description": "The current user does not have the necessary privileges to make this request"
+            },
+            "404": {
+              "description": "Requested Test ID does not exist"
+            },
+            "500": {
+              "description": "System error"
+            }
+        }
+      }
+    },
+    "/api/v1/administration/integrations/proxy/exclusions": {
+    "get": {
+      "summary": "Get proxy exclusion configuration",
+      "description": "Returns the current list of IPs and hostnames excluded from proxy routing.",
+      "operationId": "getProxyExclusions",
+      "tags": ["Network Configuration"],
+      "produces": ["application/json"],
+      "parameters": [
+        {
+          "$ref": "#/parameters/GlobalToken"
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Proxy exclusion list",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "ips": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "hostnames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "401": { "description": "Unauthorized user" },
+        "500": { "description": "Internal server error" }
+      }
+    },
+    "post": {
+      "summary": "Set proxy exclusion configuration",
+      "description": "Overwrites the list of IPs and hostnames that should bypass the proxy.",
+      "operationId": "setProxyExclusions",
+      "tags": ["Network Configuration"],
+      "produces": ["application/json"],
+      "parameters": [
+        {
+          "in": "body",
+          "name": "body",
+          "required": true,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "ips": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "hostnames": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "example": {
+              "ips": ["10.0.0.1"],
+              "hostnames": ["internal.corp.local"]
+            },
+            "required": ["ips", "hostnames"]
+          }
+        },
+        {
+          "$ref": "#/parameters/GlobalToken"
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Proxy exclusions updated",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        },
+        "400": {
+          "description": "Validation error",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "example": "error"
+              },
+              "message": {
+                "type": "string",
+                "example": "Invalid entries: '@bad-name. Only valid IP / DNS hostnames are allowed."
+              }
+            }
+          }
+        },
+        "413": {
+          "description": "Too many exclusions",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "example": "error"
+              },
+              "message": {
+                "type": "string",
+                "example": "Maximum number of exclusions exceeded. Limit is 100 entries."
+              }
+            }
+          }
+        },
+        "401": { "description": "Unauthorized user" },
+        "500": { "description": "Internal server error" }
+      }
+    }
+  }
+    },
+    "definitions": {
+      "TGTAuth": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "description": "An API Client ID can be issued in your Pentera UI. Open your Pentera Platform and navigate to Administration > Integrations > API Clients to create or copy an existing Client ID.",
+            "example": "bcfcbda884214a2aba14f97f4645becd"
+          },
+          "tgt": {
+            "type": "string",
+            "description": "A TGT can be issued in your Pentera UI. Open your Pentera Platform and navigate to Administration > Integrations > API Clients to copy or  issue a new TGT for the Client ID.",
+            "example": "eyJhbGciOiJIUzI1NiIsImlhdCI6MTY0MDc2Nzg0MywiZXhwIjoxNjUxMTM1ODQzLjB9.eyJ1c2VybmFtZSI6ImJjZmNiZGE4ODQyMTRhMmFiYTE0Zjk3ZjQ2NDViZWNkIiwiaXAiOiIiLCJpc19tZmFfb3RwX3ZlcmlmaWNhdGlvbl90b2tlbiI6ZmFsc2V9.9CPkWhiUAjcr9gTUp-nnLZVcxOaycA7p-P9lW3IeXMY"
+          }
+        }
+      },
+      "Achievement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Internal Pentera ID per achievement type",
+            "type": "string",
+            "example": "pcysys_linux_0.10000970"
+          },
+          "creation_time": {
+            "description": "Time and date as it appears in the Pentera Attack Map, indicating when Pentera obtained the achievement. (Epoch datetime in milliseconds.)",
+            "type": "number",
+            "example": 1638337967752.306
+          },
+          "name": {
+            "description": "Achievement name",
+            "type": "string",
+            "example": "Generated Encryption key"
+          },
+          "summary": {
+            "description": "Synopsis of the Pentera's ethical hacking achievement",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["share contains 86150 folders and 667780 files"]
+          },
+          "severity": {
+            "type": "number",
+            "example": 1
+          },
+          "parameters": {
+            "description": "Input parameters used by Pentera to execute the action and obtain the achievement.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["Host: 1.1.1.1", "Path: /"]
+          },
+          "target": {
+            "type": "string",
+            "example": "WindowsUser"
+          },
+          "target_id": {
+            "$ref": "#/definitions/ObjectId",
+            "example": "61b5d04fcf7b49cf34a569d1"
+          },
+          "results": {
+            "description": "Outputs obtained by the achievement.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "1.1.1.1"
+            }
+          },
+          "insight": {
+            "description": "Synopsis of the attack vector that led to the achievement and/or the expected adversary next steps.",
+            "type": "string",
+            "example": "An attacker may list and read sensitive source code data which might provide find new vulnerabilities and exploit them"
+          }
+        }
+      },
+      "TaskRun": {
+        "type": "object",
+        "properties": {
+          "task_run_id": {
+            "type": "string",
+            "description": "Test run ID. Every time a Testing Scenario template is run, it receives a unique ID.",
+            "example": "6177ecbb4d174d6fc20f1d3a"
+          },
+          "start_timestamp": {
+            "type": "number",
+            "description": "Timestamp of when the test run was initiated. (Milliseconds since Unix Epoch)",
+            "format": "double",
+            "example": 1630017381279.516
+          },
+          "end_timestamp": {
+            "type": "number",
+            "format": "double",
+            "description": "Timestamp of when the test run ended and after cleanup was completed. (Milliseconds since Unix Epoch)",
+            "example": 1650017381279.516
+          },
+          "duration": {
+            "type": "number",
+            "description": "Duration of the test run",
+            "example": 94423
+          },
+          "status": {
+            "type": "string",
+            "description": "Status of the test run",
+            "example": "failed"
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of Testing Scenario",
+            "example": "whatIf"
+          },
+          "name": {
+            "type": "string",
+            "description": "Template name",
+            "example": "Scenario 1"
+          },
+          "description": {
+            "type": "string",
+            "description": "Template description",
+            "example": "Scenario 1"
+          },
+          "pentera_version": {
+            "type": "string",
+            "description": "The version of Pentera Core used in the test",
+            "example": "5.9.10"
+          },
+          "score": {
+            "type": "string",
+            "description": "The score received for the test represents the overall cyber posture of the tested environment on a scale from A to C or as a percentage.\n\nNotes:\nN/A means the testing duration was too short or there were insufficient findings\nnull means this testing scenario type does not support score",
+            "example": "C+"
+          },
+          "scorecard": {
+            "type": "object",
+            "description": "NULL means this testing scenario type does not support scorecard",
+            "properties": {
+              "critical_assets": {
+                "description": "The critical assets score indicates if Critical Assets were compromised",
+                "type": "string",
+                "example": "critical"
+              },
+              "credentials_account_takeover": {
+                "description": "The credentials and accounts takeover score indicates the success rate of account takeovers",
+                "type": "string",
+                "example": "low"
+              },
+              "sniffing": {
+                "description": "The sniffing score indicates the severity of sniffing findings",
+                "type": "string",
+                "example": "medium"
+              },
+              "password_strength": {
+                "description": "The password strength score is based on the success rate of cracking actions",
+                "type": "string",
+                "example": "none"
+              },
+              "lateral_movement": {
+                "description": "The lateral movement score indicates the coverage of lateral movement across the network",
+                "type": "string",
+                "example": "high"
+              },
+              "accessible_data": {
+                "description": "The accessible data score indicate the level of access to data",
+                "type": "string",
+                "example": "none"
+              },
+              "host_takeover": {
+                "description": "The host takeover score indicates the success rate of host takeovers",
+                "type": "string",
+                "example": "high"
+              },
+              "av_edr_bypass": {
+                "description": "The AV/EDR score indicates the success rate of the remote command session attempts",
+                "type": "string",
+                "example": "medium"
+              }
+            }
+          }
+        }
+      },
+      "ObjectId": {
+        "type": "string",
+        "example": "61a64c40e1c9b9f68a24853b",
+        "pattern": "^[0-9a-f]{36}$",
+        "minLength": 36,
+        "maxLength": 36
+      },
+      "Timestamp": {
+        "type": "number",
+        "format": "double",
+        "example": 1640017381279.516
+      },
+      "Vulnerability": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Internal Pentera ID per vulnerability type",
+            "type": "string",
+            "example": "pcysys_linux_0.100001055"
+          },
+          "creation_time": {
+            "description": "Time as it appears in the Pentera Attack Map, indicating when Pentera validated that the vulnerability exists in the tested network",
+            "type": "number",
+            "example": 1638806663620.0
+          },
+          "name": {
+            "description": "Vulnerability name",
+            "type": "string",
+            "example": "Discovered closed ports on the host"
+          },
+          "summary": {
+            "description": "Short description of the vulnerability",
+            "type": "string",
+            "example": "Discovered closed port on the host (reachable without firewalling)."
+          },
+          "found_on": {
+            "description": "Array of IPs affected by the vulnerability in the tested network",
+            "type": "string",
+            "example": "Host: 192.168.1.1"
+          },
+          "target": {
+            "type": "string",
+            "example": "Host"
+          },
+          "target_id": {
+            "type": "string",
+            "example": "61ae2ec4d768ab74d77a9d62"
+          },
+          "port": {
+            "description": "Vulnerable port",
+            "type": "integer",
+            "example": 445
+          },
+          "protocol": {
+            "description": "Network protocol",
+            "type": "string",
+            "example": "smb"
+          },
+          "severity": {
+            "type": "number",
+            "example": 2.3
+          },
+          "priority": {
+            "description": "Remediation priority as determined by Pentera, based on the number of hosts affected by the vulnerability, the number and severity of achievements caused by it, and whether the vulnerability provided access to the network's Critical Assets, as configured in Pentera.",
+            "type": "integer",
+            "example": 1
+          },
+          "insight": {
+            "description": "Synopsis of the attack vectors enabled by the vulnerability",
+            "type": "string",
+            "example": "Discovered closed port on the host (reachable without firewalling)."
+          },
+          "remediation": {
+            "description": "Synopsis of the recommended remediation",
+            "type": "string",
+            "example": "If closed ports are reachable through the firewall, they can be abused. It is recommended to block closed ports via firewalling to prevent malicious software from establishing a C2 channel through a closed port."
+          }
+        }
+      },
+      "ActionLog": {
+        "type": "object",
+        "properties": {
+          "start_time": {
+            "description": "Time and date that the action was started (Epoch datetime in milliseconds.)",
+            "type": "number",
+            "format": "double",
+            "example": 1635254440000
+          },
+          "duration": {
+            "description": "Duration of the action",
+            "type": "number",
+            "format": "double",
+            "example": 0.0
+          },
+          "status": {
+            "description": "If successful, the action furthered Pentera's ethical attack. If `no results`, the action did not further the attack.",
+            "type": "string",
+            "example": "success"
+          },
+          "parameters": {
+            "description": "Input parameters used by Pentera to execute the action.",
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "example": [
+              {"username": "username"},
+              {"password": "password"}
+            ]
+          },
+          "operation_type": {
+            "description": "Short description of the action",
+            "type": "string",
+            "example": "Host Discovery with ICMP Timestamp Request"
+          },
+          "agent_name": {
+            "description": "Pentera node that executed the action",
+            "type": "string",
+            "example": "default-node"
+          },
+          "categories": {
+            "description": "List of MITRE ATT&CK categories",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["Discovery"]
+          },
+          "techniques": {
+            "description": "List of MITRE ATT&CK techniques",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["Remote System Discovery"]
+          }
+  
+        }
+      },
+      "TestingScenario": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "description": "Unique ID of the Testing Scenario template",
+            "$ref": "#/definitions/ObjectId",
+            "example": "6161ef310c2f84b773ea7a2b"
+          },
+          "name": {
+            "description": "Testing Scenario template name",
+            "type": "string",
+            "example": "test name"
+          },
+          "description": {
+            "description": "Short description of the Testing Scenario template",
+            "type": "string",
+            "example": "test description"
+          },
+          "type": {
+            "description": "Type of Testing Scenario",
+            "$ref": "#/definitions/templateTypeEnum"
+          },
+          "schedule": {
+            "description": "Testing schedule for the Testing Scenario template",
+            "$ref": "#/definitions/schedule"
+          },
+          "last_start_time": {
+            "description": "Timestamp of when the template was most recently run (Unix timestamp in seconds), Might return '-1' in case of no test run for this template",
+            "type": "number",
+            "example": 1639496756374.0
+          }
+        }
+      },
+      "schedule": {
+        "type": "object",
+        "properties": {
+          "next_scheduled_run": {
+            "description": "Next scheduled run for the Testing Scenario template",
+            "type": "string",
+            "example": "2022-01-26T12:00:42"
+          },
+          "timezone": {
+            "description": "Time zone configured for the template. The time zone is configured per template in the Pentera UI",
+            "type": "string",
+            "example": "Asia/Jerusalem"
+          },
+          "type": {
+            "description": "Scheduling frequency",
+            "type": "string",
+            "enum": ["ONE_TIME_SCHEDULE", "DAILY", "WEEKLY", "MONTHLY"],
+            "example": "MONTHLY"
+          }
+  
+        }
+      },
+      "startedTaskRunsStatus": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "description": "Unique ID of the Testing Scenario template",
+            "$ref": "#/definitions/ObjectId",
+            "example": "6161ef310c2f84b773ea7a2b"
+          },
+          "task_run_id ": {
+            "description": "Test run ID. Each time a Testing Scenario template is run, it receives a new test run ID",
+            "$ref": "#/definitions/ObjectId",
+            "example": "6161ef310c2f84b773ea7a2b"
+          },
+          "type": {
+            "description": "Type of Testing Scenario",
+            "$ref": "#/definitions/templateTypeEnum"
+          },
+          "start_time": {
+            "description": "Timestamp of when the template was most recently run (Unix timestamp in seconds)",
+            "type": "number",
+            "example": 1639496756374.0
+          }
+  
+        }
+      },
+      "templateTypeEnum": {
+        "type": "string",
+        "enum": [
+          "What-if",
+          "Penetration Testing",
+          "Advanced Targeted Test",
+          "Vulnerability Assessment",
+          "Targeted Testing - Windows Critical Vulnerability Scanning",
+          "Targeted Testing - AD Password Strength Assessment",
+          "Targeted Testing - Ransomware Emulation"
+        ]
+      },
+      "TargetTypeEnum": {
+        "type": "string",
+        "enum": [
+          "Host",
+          "Domain",
+          "WebDomain",
+          "WebApplication"
+        ],
+        "example": "Host"
+      },
+      "Host": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The Host ID is specific to the test run",
+            "$ref": "#/definitions/ObjectId",
+            "example": "6161ef310c2f84b773ea7a2b"
+          },
+          "target": {
+            "description": "Pentera categorizes its targets by type. For this endpoint, the target is `host`",
+            "type": "string",
+            "enum": ["Host"],
+            "example": "Host"
+          },
+          "task_run_id": {
+            "description": "Test run ID",
+            "$ref": "#/definitions/ObjectId",
+            "example": "6161ef310c2f84b773ea7a2b"
+          },
+          "hostname": {
+            "description": "Name of the Host",
+            "type": "string",
+            "example": "John-Desktop"
+          },
+          "ip": {
+            "description": "IP Address of the Host",
+            "type": "string",
+            "example": "192.168.1.1"
+          },
+          "domain": {
+            "description": "Domain information for the host",
+            "$ref": "#/definitions/Domain"
+          },
+          "os_name": {
+            "description": "Operation System information for the host",
+            "type": "string",
+            "example": "win2012R2"
+          },
+          "os_type": {
+            "description": "OS type for the host, as in Windows, Linux, etc.",
+            "type": "string",
+            "example": "windows"
+          },
+          "vendor": {
+            "description": "Vendor name",
+            "type": "string",
+            "example": "microsoft"
+          },
+          "services": {
+            "description": "Services detected on the host",
+            "type":"array",
+            "items": {
+              "$ref": "#/definitions/Service"
+            }
+          }
+        }
+      },
+      "Domain": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Domain name",
+            "type": "string",
+            "example": "PENTERA.IO"
+          },
+          "FQDN": {
+            "description": "Fully qualified domain name",
+            "type": "string",
+            "example": "PENTERA.IO"
+          },
+          "netBIOS": {
+            "description": "NetBIOS name of the domain",
+            "type": "string",
+            "example": "PT"
+          }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Service name",
+            "type": "string",
+            "example": "msrpc"
+          },
+          "port": {
+            "description": "Port used by the service",
+            "$ref": "#/definitions/Port"
+          },
+          "state": {
+            "description": "Port status, can be open, closed, filtered, etc.",
+            "type": "string",
+            "example": "tcp"
+          },
+          "transport": {
+            "description": "Transport protocol used by the service",
+            "type": "string",
+            "example": "open"
+          }
+        }
+      },
+      "Port": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 65535,
+        "example": 135
+      },
+      "IP": {
+        "description": "IPv4 format",
+        "type": "string",
+        "example": "192.168.1.1"
+      },
+      "IPRange": {
+        "type":"object",
+        "properties": {
+          "fromIp": {
+            "$ref": "#/definitions/IP"
+          },
+          "toIp": {
+            "$ref": "#/definitions/IP"
+          }
+        }
+      }
+    }
+  }

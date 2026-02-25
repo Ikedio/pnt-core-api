@@ -1,0 +1,24 @@
+[Unit]
+Description=Pentera Old Tests Cleanup Service
+After=network.target
+
+[Service]
+Type=simple
+User=pentera
+Group=pentera
+WorkingDirectory=/opt/pentera-cleanup
+ExecStart=/opt/pentera-cleanup/venv/bin/python /opt/pentera-cleanup/delete_old_tests.py --retention-days 30 --continuous --interval-hours 24
+Restart=always
+RestartSec=60
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/pentera-cleanup
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

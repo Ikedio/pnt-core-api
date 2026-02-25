@@ -1,0 +1,25 @@
+# Pentera API Credentials
+pentera_api.conf
+*.conf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.env
+.pytest_cache/
+
+# Logs
+*.log
+cleanup.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+.cursor/
