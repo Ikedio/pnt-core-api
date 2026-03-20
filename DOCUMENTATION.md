@@ -83,6 +83,8 @@ Recalculate statistics for a task run if inconsistencies are found.
 Fetch metadata for all configured Testing Scenario templates.
 - **Endpoint:** `GET /pentera/api/v1/testing_scenarios`
 
+For AD Password Strength Assessment (ADPA), task runs often include **`singleActionType`: `AdPasswordAssessment`** (see **`GET /api/v1/taskRun`**). The ADPA user exporter lists and filters runs from that endpoint rather than **`GET /pentera/api/v1/testing_scenarios`**.
+
 ### Start a Scenario
 Initiate a new test run based on a template.
 - **Endpoint:** `POST /pentera/api/v1/task/{template_id}/start_run`
@@ -132,6 +134,10 @@ Fetch the detailed log of all actions performed during a test.
 List all hosts discovered and covered by a specific test run.
 - **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/hosts`
 
+### AD Password Assessment — Active Directory users (deployment-specific)
+
+The public Swagger excerpt in this repo does not define the AD user export route. On many appliances, user listings are available only on a **second HTTP mount** (same host, no `/pentera` prefix): for example `POST /api/v1/taskRun/{task_run_id}/users/activeDirectoryUsers` with a JSON pagination/sort body, while `GET` or paths under `/pentera/api/v1/task_run/...` may return **404** or **405**. Integrations should try both `taskRun` and `task_run` spellings and both URL prefixes.
+
 ### Get Asset Details
 Fetch specific details for an asset (Host, Webdomain, etc.) within a task run.
 - **Endpoint:** `GET /pentera/api/v1/task_run/{task_run_id}/target_details/{target_type}/{target_id}`
@@ -162,6 +168,10 @@ Manage the list of IPs and hostnames that bypass proxy routing.
 | Property | Type | Description |
 |----------|------|-------------|
 | `task_run_id` | string | Unique ID for the test run |
+| `taskRunId` | string | Same in camelCase (common in API JSON and testing history) |
+| `taskRunName` | string | Display name for the run when `name` is not set |
+| `templateId` | string | Template ID (camelCase); may also appear as `template_id` |
+| `singleActionType` | string | e.g. `AdPasswordAssessment` for ADPA |
 | `start_timestamp` | float | Start time (ms) |
 | `end_timestamp` | float | End time (ms) |
 | `status` | string | `success`, `failed`, `running`, etc. |

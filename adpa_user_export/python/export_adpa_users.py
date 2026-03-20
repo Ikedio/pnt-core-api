@@ -20,7 +20,8 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -165,37 +166,49 @@ class PenteraClient:
     
     def _fetch_task_runs_from_endpoints(self) -> list:
         """Fetch task runs using GET /testing_history endpoint with timestamp parameters."""
-        # The /testing_history endpoint requires start_timestamp and end_timestamp
-        # as milliseconds since Unix Epoch
-        start_timestamp = int(datetime(2020, 1, 1).timestamp() * 1000)
-        end_timestamp = int((datetime.now().timestamp() + 86400) * 1000)  # +1 day
-        
-        # Try endpoints - /api/v1/ without /pentera prefix based on AD users endpoint pattern
-        endpoints = [
-            f"{self.base_url}/api/v1/testing_history?start_timestamp={start_timestamp}&end_timestamp={end_timestamp}",
-            f"{self.base_url}/pentera/api/v1/testing_history?start_timestamp={start_timestamp}&end_timestamp={end_timestamp}"
+        bases = [
+            f"{self.base_url}/pentera/api/v1/testing_history",
+            f"{self.base_url}/api/v1/testing_history",
         ]
-        
+
         headers = self._get_auth_headers()
-        
-        for url in endpoints:
-            print(f"    [*] Trying: GET {url}")
-            
-            try:
-                response = requests.get(url, headers=headers, verify=False)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    task_runs = self._extract_task_runs(data)
-                    if task_runs:
-                        print(f"    [+] Success - retrieved {len(task_runs)} task runs")
-                        return task_runs
-                else:
-                    print(f"    [-] Failed: Status {response.status_code}")
-            except Exception as e:
-                print(f"    [-] Failed: {e}")
-        
+
+        query_variants = self._testing_history_query_variants()
+
+        for base in bases:
+            for q in query_variants:
+                url = f"{base}?{q}"
+                print(f"    [*] Trying: GET {url}")
+                try:
+                    response = requests.get(url, headers=headers, verify=False)
+                    if response.status_code == 200:
+                        data = response.json()
+                        task_runs = self._extract_task_runs(data)
+                        if task_runs:
+                            print(f"    [+] Success - retrieved {len(task_runs)} task runs")
+                            return task_runs
+                    else:
+                        print(f"    [-] Failed: Status {response.status_code}")
+                except Exception as e:
+                    print(f"    [-] Failed: {e}")
+
         return []
+
+    @staticmethod
+    def _testing_history_query_variants() -> list:
+        """Query strings for GET testing_history (ms since epoch; include explicit .0 decimals)."""
+        start2000 = int(datetime(2000, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        end_plus1 = int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp() * 1000)
+        end_now = int(datetime.now(timezone.utc).timestamp() * 1000)
+        start365 = int((datetime.now(timezone.utc) - timedelta(days=365)).timestamp() * 1000)
+        return [
+            f"start_timestamp={start2000}&end_timestamp={end_plus1}",
+            f"start_timestamp={start2000}.0&end_timestamp={end_plus1}.0",
+            f"start_timestamp={start2000}&end_timestamp={end_now}",
+            f"start_timestamp={start2000}.0&end_timestamp={end_now}.0",
+            f"start_timestamp={start365}&end_timestamp={end_now}",
+            f"start_timestamp={start365}.0&end_timestamp={end_now}.0",
+        ]
     
     def _extract_task_runs(self, response: dict) -> list:
         """Extract task runs from various response formats."""
@@ -207,6 +220,54 @@ class PenteraClient:
                    response.get("testing_history") or
                    response.get("tasks") or [])
         return []
+
+    @staticmethod
+    def _is_likely_ad_user_row(obj) -> bool:
+        if not isinstance(obj, dict):
+            return False
+        keys = set(obj.keys())
+        hints = (
+            "samAccountName", "userPrincipalName", "distinguishedName", "objectSid",
+            "objectGUID", "DistinguishedName", "SamAccountName", "Username", "displayName", "mail",
+        )
+        if keys.intersection(hints):
+            return True
+        pat = re.compile(r"(samaccount|userprincipal|distinguished|objectsid|objectguid|accountname)", re.I)
+        return any(pat.search(k) for k in keys)
+
+    def _find_user_array_deep(self, node, depth: int = 0) -> list:
+        if node is None or depth > 10:
+            return []
+        if isinstance(node, list) and len(node) > 0 and self._is_likely_ad_user_row(node[0]):
+            return node
+        if isinstance(node, dict):
+            for v in node.values():
+                found = self._find_user_array_deep(v, depth + 1)
+                if found:
+                    return found
+        return []
+
+    def _extract_users_from_payload(self, data) -> list:
+        """Find user list inside varied API response shapes (nested wrappers)."""
+        if data is None:
+            return []
+        if isinstance(data, list) and data:
+            return data if self._is_likely_ad_user_row(data[0]) else []
+        if not isinstance(data, dict):
+            return []
+        for key in (
+            "users", "activeDirectoryUsers", "active_directory_users",
+            "items", "results", "records", "content", "rows", "list", "values", "data",
+        ):
+            val = data.get(key)
+            if isinstance(val, list) and len(val) > 0:
+                if self._is_likely_ad_user_row(val[0]):
+                    return val
+            if isinstance(val, dict):
+                nested = self._extract_users_from_payload(val)
+                if nested:
+                    return nested
+        return self._find_user_array_deep(data)
     
     def get_task_runs(self, adpa_only: bool = True) -> list:
         """Get all task runs, optionally filtering for AdPasswordAssessment tests."""
@@ -224,19 +285,12 @@ class PenteraClient:
             print(f"[+] Found {len(task_runs)} task runs.")
             return task_runs
         
-        print(f"    [*] Filtering for AdPasswordAssessment tests...")
+        print(f"    [*] Filtering for AdPasswordAssessment (singleActionType or name/type match)...")
         
-        # Filter for AD Password Strength Assessment (ADPA) tests
-        # Swagger shows type: "Targeted Testing - AD Password Strength Assessment"
         all_task_runs = []
-        adpa_pattern = re.compile(r'AD Password|AdPassword|ADPA', re.IGNORECASE)
         
         for task in task_runs:
-            task_type = str(task.get("type", ""))
-            name = str(task.get("name", ""))
-            
-            # Match AD Password Assessment tests
-            if adpa_pattern.search(task_type) or adpa_pattern.search(name):
+            if self._is_adpa_task(task):
                 all_task_runs.append(task)
         
         # If no ADPA tasks found, show available types
@@ -246,7 +300,7 @@ class PenteraClient:
             # Show available task types for debugging
             types = {}
             for task in task_runs:
-                t = task.get("type", "unknown")
+                t = task.get("singleActionType") or task.get("type", "unknown")
                 types[t] = types.get(t, 0) + 1
             
             print("    Available task types:")
@@ -258,17 +312,66 @@ class PenteraClient:
         
         print(f"[+] Found {len(all_task_runs)} AdPasswordAssessment task runs.")
         return all_task_runs
+
+    @staticmethod
+    def _is_adpa_task(task: dict) -> bool:
+        if task.get("singleActionType") == "AdPasswordAssessment":
+            return True
+        adpa_pattern = re.compile(r"AD Password|AdPassword|ADPA", re.IGNORECASE)
+        task_type = str(task.get("type", ""))
+        name = str(task.get("name") or task.get("taskRunName") or "")
+        return bool(adpa_pattern.search(task_type) or adpa_pattern.search(name))
+
+    def _fetch_api_v1_task_runs(self) -> list:
+        """GET /api/v1/taskRun (POST pagination fallback)."""
+        url = f"{self.base_url}/api/v1/taskRun"
+        h = self._get_auth_headers()
+        try:
+            r = requests.get(url, headers=h, verify=False)
+            if r.status_code == 200:
+                data = r.json()
+                tr = data.get("taskRuns") or data.get("task_runs") or []
+                return tr if isinstance(tr, list) else []
+            payload = {
+                "offset": 0,
+                "items_per_page": 500,
+                "sort": {"direction": "DESC", "key": "startTime"},
+                "filters": {},
+                "unique_fields": ["state"],
+            }
+            r = requests.post(url, headers=h, json=payload, verify=False)
+            if r.status_code == 200:
+                data = r.json()
+                tr = data.get("taskRuns") or data.get("task_runs") or []
+                return tr if isinstance(tr, list) else []
+        except Exception:
+            pass
+        return []
+
+    def get_adpa_task_runs_from_api_v1_task_run(self) -> list:
+        """When testing_history is unavailable: GET /api/v1/taskRun, filter ADPA runs."""
+        print("[*] Fetching ADPA task runs from /api/v1/taskRun...")
+        all_runs = self._fetch_api_v1_task_runs()
+        if not all_runs:
+            print("    [-] No task runs from /api/v1/taskRun")
+            return []
+        print(f"    [+] Loaded {len(all_runs)} task run(s)")
+        out = [x for x in all_runs if self._is_adpa_task(x)]
+        print(f"    [+] {len(out)} ADPA run(s) after filter")
+        return out
     
     def get_active_directory_users(self, task_id: str) -> list:
         """Get Active Directory users for a specific task run."""
         print(f"    [*] Fetching AD users for task: {task_id}")
-        
-        # Endpoint: POST /api/v1/taskRun/{TaskID}/users/activeDirectoryUsers
-        # Requires JSON body with pagination parameters
-        url = f"{self.base_url}/api/v1/taskRun/{task_id}/users/activeDirectoryUsers"
-        
+
+        # Many appliances expose POST only on /api/v1/taskRun/... (not under /pentera). Try that first.
+        paths = [
+            f"/api/v1/taskRun/{task_id}/users/activeDirectoryUsers",
+            f"/api/v1/task_run/{task_id}/users/activeDirectoryUsers",
+            f"/pentera/api/v1/taskRun/{task_id}/users/activeDirectoryUsers",
+            f"/pentera/api/v1/task_run/{task_id}/users/activeDirectoryUsers",
+        ]
         headers = self._get_auth_headers()
-        
         payload = {
             "offset": 0,
             "items_per_page": 10000,
@@ -279,40 +382,82 @@ class PenteraClient:
             "filters": {},
             "unique_fields": ["state"]
         }
-        
-        print(f"        [*] POST {url}")
-        
-        try:
-            response = requests.post(url, headers=headers, json=payload, verify=False)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Extract users from response
-                users = None
-                if isinstance(data, list):
-                    users = data
-                elif isinstance(data, dict):
-                    users = (data.get("users") or 
-                            data.get("activeDirectoryUsers") or 
-                            data.get("active_directory_users") or 
-                            data.get("data") or [])
-                
-                if users:
-                    print(f"        [+] Success! Found {len(users)} users")
-                    return users
-            else:
-                print(f"        [-] Failed: Status {response.status_code}")
-                if response.text:
-                    print(f"            Details: {response.text[:200]}")
-        except Exception as e:
-            print(f"        [-] Failed: {e}")
-        
+
+        for path in paths:
+            url = f"{self.base_url}{path}"
+            for method in ("POST", "GET"):
+                print(f"        [*] {method} {url}")
+                try:
+                    if method == "POST":
+                        response = requests.post(url, headers=headers, json=payload, verify=False)
+                    else:
+                        response = requests.get(url, headers=headers, verify=False)
+                    if response.status_code != 200:
+                        continue
+                    data = response.json()
+                    users = self._extract_users_from_payload(data)
+                    if isinstance(data, dict) and data.get("meta", {}).get("token"):
+                        self.token = data["meta"]["token"]
+                    if users:
+                        print(f"        [+] Success! Found {len(users)} users")
+                        return users
+                except Exception as e:
+                    print(f"        [-] Failed: {e}")
+
+        print("        [-] No AD users from any known endpoint for this task.")
         return []
 
 
-def flatten_value(value) -> str:
-    """Flatten complex values for CSV export."""
+def format_pentera_unix_epoch(value) -> Optional[str]:
+    """Unix time in seconds or milliseconds -> UTC string yyyy-MM-dd HH:mm:ss UTC."""
+    if value is None or value == "":
+        return None
+    try:
+        if isinstance(value, str):
+            s = value.strip()
+            if not re.match(r"^-?\d+(\.\d+)?$", s):
+                return None
+            n = float(s)
+        elif isinstance(value, (int, float)):
+            n = float(value)
+        else:
+            return None
+        if n <= 0:
+            return None
+        if n >= 1_000_000_000_000:
+            sec = round(n) / 1000.0
+        else:
+            sec = float(round(n))
+        dt = datetime.fromtimestamp(sec, tz=timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    except (ValueError, OSError, OverflowError):
+        return None
+
+
+def _is_timestamp_column_name(name: str) -> bool:
+    if not name:
+        return False
+    n = name.lower()
+    explicit = {
+        "lastlogon", "passwordlastset", "pwdlastset", "badpasswordtime",
+        "lastlogontimestamp", "accountexpires", "whencreated", "whenchanged",
+        "lastlogoff", "badpwdtime",
+    }
+    if n in explicit:
+        return True
+    if re.search(r"(timestamp|logon|expires)$", n):
+        return True
+    if n.startswith("pwd") and "set" in n:
+        return True
+    return False
+
+
+def flatten_value(value, column: Optional[str] = None) -> str:
+    """Flatten complex values for CSV export; formats known timestamp columns."""
+    if column and _is_timestamp_column_name(column):
+        readable = format_pentera_unix_epoch(value)
+        if readable:
+            return readable
     if value is None:
         return ""
     if isinstance(value, list):
@@ -336,7 +481,7 @@ def export_to_csv(users: list, output_path: str):
     
     # Define preferred column order
     preferred_order = [
-        "task_id", "task_name", "username", "displayName", "samAccountName",
+        "task_id", "task_name", "template_id", "username", "displayName", "samAccountName",
         "userPrincipalName", "email", "distinguishedName", "domain",
         "enabled", "lastLogon", "passwordLastSet", "memberOf"
     ]
@@ -360,7 +505,7 @@ def export_to_csv(users: list, output_path: str):
             row = {}
             for col in columns:
                 value = user.get(col, "")
-                row[col] = flatten_value(value)
+                row[col] = flatten_value(value, col)
             writer.writerow(row)
     
     print(f"[+] Exported {len(users)} users to: {output_path}")
@@ -431,11 +576,19 @@ Examples:
     else:
         # Batch mode - get all ADPA tests
         task_runs = client.get_task_runs(adpa_only=not args.all_tasks)
-        
+        if not task_runs and not args.all_tasks:
+            task_runs = client.get_adpa_task_runs_from_api_v1_task_run()
+
         for task in task_runs:
-            # Swagger shows field is "task_run_id"
-            task_id = task.get("task_run_id") or task.get("id") or task.get("task_id") or task.get("taskId")
-            task_name = task.get("name") or task.get("task_name") or "Unknown"
+            # testing_history often uses camelCase: taskRunId, taskRunName, templateId
+            task_id = (
+                task.get("taskRunId") or task.get("task_run_id")
+                or task.get("id") or task.get("task_id") or task.get("taskId")
+            )
+            task_name = (
+                task.get("taskRunName") or task.get("name") or task.get("task_name") or "Unknown"
+            )
+            template_id = task.get("templateId") or task.get("template_id")
             
             if not task_id:
                 print("    [-] Skipping task with no ID")
@@ -446,6 +599,8 @@ Examples:
             for user in users:
                 user["task_id"] = task_id
                 user["task_name"] = task_name
+                if template_id:
+                    user["template_id"] = template_id
                 all_users.append(user)
             
             if users:

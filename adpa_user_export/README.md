@@ -1,6 +1,6 @@
 # ADPA Active Directory User Exporter
 
-Retrieves all ADPA (Active Directory Penetration Assessment) tests from Pentera and extracts Active Directory user data from the `/api/v1/taskRun/{TaskID}/users/activeDirectoryUsers` endpoint. Exports results to CSV.
+Retrieves all ADPA (Active Directory Penetration Assessment) tests from Pentera and extracts Active Directory user data from the task-run users endpoint (see **API** below). Exports results to CSV.
 
 ## Features
 
@@ -10,6 +10,8 @@ Retrieves all ADPA (Active Directory Penetration Assessment) tests from Pentera 
 - Extracts Active Directory user data from each task
 - Exports consolidated results to CSV with proper formatting
 - Supports single task queries and batch processing
+
+**Timestamps:** Task-run discovery output and CSV columns that look like Unix time (seconds or milliseconds—values ≥ 1e12 are treated as ms) are shown as UTC strings `yyyy-MM-dd HH:mm:ss UTC`. Raw numeric values remain in the CSV only when they are not recognized as epochs.
 
 ## Directory Structure
 
@@ -53,6 +55,10 @@ You can copy from the `.example` file and fill in your values.
 
 # Query a specific task ID only
 .\ExportADPAUsers.ps1 -TaskId "abc123-def456-789"
+
+# Discovery: lists ADPA runs from GET /api/v1/taskRun, probes testing_history once, optional URL tests with -TaskId
+.\ExportADPAUsers.ps1 -Discover
+.\ExportADPAUsers.ps1 -Discover -TaskId "your-task-run-id"
 
 # Combine options
 .\ExportADPAUsers.ps1 -ConfigPath ".\config.conf" -OutputPath ".\users.csv"
@@ -102,6 +108,7 @@ The exported CSV includes all Active Directory user properties returned by the A
 |--------|-------------|
 | task_id | ID of the task run |
 | task_name | Name of the task/scenario |
+| template_id | Scenario template ID when provided by the API (`templateId` / `template_id`) on task runs |
 | username | User's username |
 | displayName | User's display name |
 | samAccountName | SAM account name |
@@ -116,15 +123,19 @@ The exported CSV includes all Active Directory user properties returned by the A
 
 Additional columns may be included based on the data returned by your Pentera instance.
 
-## API Endpoint
+## API
 
-This tool uses the following Pentera API endpoint:
+Scripts authenticate against `POST /pentera/api/v1/auth/login`. Other calls use the same host with:
 
-```
-GET /pentera/api/v1/taskRun/{TaskID}/users/activeDirectoryUsers
-```
+- **`GET /pentera/api/v1/testing_history`** — Optional batch listing when it succeeds; `start_timestamp` / `end_timestamp` in **milliseconds** (UTC). Often returns **400** for some API clients.
 
-*Note: The script automatically tries both `/api/v1/` and `/pentera/api/v1/` prefixes for compatibility.*
+- **`GET /api/v1/taskRun`** — Primary source for **discovery** and **batch** fallback: returns `taskRuns` with `taskRunId`, `taskRunName`, `templateId`, `singleActionType`, etc. (POST with pagination body as fallback if GET fails).
+
+- **AD users** — Not listed in the checked-in `swagger.json`; some deployments only expose this on the **legacy mount** `POST /api/v1/taskRun/{task_run_id}/users/activeDirectoryUsers` (camelCase **`taskRun`**, **no** `/pentera` prefix), while `GET /pentera/api/v1/task_run/...` matches the public doc for other resources. Scripts try **`/api/v1/taskRun/...` first**, then `task_run` and `/pentera/...` variants, with `POST` (body) then `GET`.
+
+User lists may appear under `users`, `activeDirectoryUsers`, nested `data`, or deeper JSON; parsers look for arrays whose objects resemble AD user fields (`samAccountName`, `distinguishedName`, etc.).
+
+- **`testing_history` returns 400** — Batch and discovery still use **`GET /api/v1/taskRun`** to list runs and pick ADPA by `singleActionType` / name heuristics. You can also pass **` -TaskId`** from the UI or from that endpoint’s `taskRunId` field.
 
 ## Security Notes
 
@@ -146,3 +157,6 @@ GET /pentera/api/v1/taskRun/{TaskID}/users/activeDirectoryUsers
 ### Empty User Results
 - Not all task runs may have Active Directory user data
 - Verify the task has completed and discovered AD users
+- Confirm the ID is a **task run** ID (from testing history or the UI), not a scenario/template ID
+- Run `.\ExportADPAUsers.ps1 -Discover -TaskId "<task-run-id>"` (PowerShell) to see which paths return HTTP 200
+- If needed, save the raw JSON: `.\ExportADPAUsers.ps1 -TaskId "<id>" -Json -Verbose_`
