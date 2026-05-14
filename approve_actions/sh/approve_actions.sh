@@ -20,7 +20,7 @@
 # Usage:
 #   ./approve_actions.sh --all --interval-minutes 15 --duration-hours 3
 #
-# Configuration: pentera_api.conf in this directory, or ../ps/pentera_api.conf (same format as the PowerShell example).
+# Configuration: pentera_api.conf in this directory.
 
 set -euo pipefail
 
@@ -65,8 +65,6 @@ EOF
 resolve_config_path() {
   if [[ -f "${SCRIPT_DIR}/pentera_api.conf" ]]; then
     readlink -f "${SCRIPT_DIR}/pentera_api.conf"
-  elif [[ -f "${SCRIPT_DIR}/../ps/pentera_api.conf" ]]; then
-    readlink -f "${SCRIPT_DIR}/../ps/pentera_api.conf"
   else
     echo ""
   fi
